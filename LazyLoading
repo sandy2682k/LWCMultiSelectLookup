@@ -1,0 +1,133 @@
+************* HTML Code *****************
+
+<template>
+    <div style="height:300px">
+    <lightning-datatable key-field="Id" data={accounts} columns={columns} enable-infinite-loading onloadmore={loadMoreData} show-row-number-column="true">
+    </lightning-datatable> 
+</div>
+</template>
+
+****************** JS Code ****************
+
+import { LightningElement, track, wire } from 'lwc';
+import getAccounts from '@salesforce/apex/LazyLoadingController.getAccounts';
+
+// Define columns for the datatable
+const columns = [
+    { label: 'Id', fieldName: 'Id', type: 'text' },
+    { label: 'Name', fieldName: 'Name', type: 'text'},
+    {label: 'Phone', fieldName: 'Phone', type: 'text'}
+];
+
+export default class lazyLoading extends LightningElement {
+    // Define component properties
+    @track accounts=[];
+    @track error;
+    columns = columns;
+    rowLimit =10;
+    //rowOffSet=0;
+    lastRecordId = '';
+  
+    // Load data when component is connected
+    connectedCallback() {
+        this.loadData();
+        console.log('Component connected...');
+    }
+
+    // Method to load data from Apex controller
+    // loadData(){
+    //     console.log('Loading data..');
+    //     return  getAccounts({ limitSize: this.rowLimit , offset : this.rowOffSet })
+
+    //     .then(result => {
+    //         console.log('Data loaded successfully:', result);
+    //         let updatedRecords = [...this.accounts, ...result];
+    //         this.accounts = updatedRecords;
+    //         this.error = undefined;
+    //     })
+    //     .catch(error => {
+    //         this.error = error;
+    //         console.error('Error loading data:', error);
+    //         this.accounts = undefined;
+    //     });
+    // }
+
+    loadData() {
+        console.log('Loading data..');
+        return getAccounts({ limitSize: this.rowLimit, lastRecordId: this.lastRecordId })
+            .then(result => {
+                console.log('Data loaded successfully:', result);
+                console.log('Length of result ==> ',result.length);
+                if (result && result.length > 0) {
+                    this.lastRecordId = result[result.length - 1].Id;
+                    console.log('Last Record Id => ', this.lastRecordId);
+                    let updatedRecords = [...this.accounts, ...result];
+                    this.accounts = updatedRecords;
+                    console.log('Update Records ==> ',this.accounts);
+                    this.error = undefined;
+                }
+            })
+            .catch(error => {
+                this.error = error;
+                console.error('Error loading data:', error);
+                this.accounts = undefined;
+            });
+    }
+
+    // Method to load more data when scroll down
+    loadMoreData(event) {
+        console.log('On Load More event execute...');
+        //const currentRecord = this.accounts;
+        const { target } = event;
+         // Set isLoading to true to show loading spinner
+        target.isLoading = true;
+
+        //this.rowOffSet = this.rowOffSet + this.rowLimit;
+        //console.log('No of Offest ==> ',this.rowOffSet);
+
+        // Call the loadData method to fetch more records
+        this.loadData()
+            .then(()=> {
+                target.isLoading = false;
+            });   
+    }
+}
+
+**************** XML Code *****************
+
+<?xml version="1.0" encoding="UTF-8"?>
+<LightningComponentBundle xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>59.0</apiVersion>
+    <isExposed>true</isExposed>
+    <targets>
+        <target>lightning__AppPage</target>
+        <target>lightning__RecordPage</target>
+        <target>lightning__HomePage</target>
+    </targets>
+</LightningComponentBundle>
+
+
+************* Apex Controller ***************
+
+public with sharing class LazyLoadingController {
+
+    @AuraEnabled(cacheable=true)
+   /* public static List<Account> getAccounts(Integer limitSize, Integer offset){
+        List<Account> accountList = [SELECT Id, Name, Phone FROM Account ORDER BY CreatedDate LIMIT :limitSize OFFSET :offset];
+        return accountList;
+    } */
+    
+    public static List<Account> getAccounts(Integer limitSize, String lastRecordId){
+        String query = 'SELECT Id, Name, Phone FROM Account WHERE Id > :lastRecordId ORDER BY CreatedDate LIMIT :limitSize';
+        
+        List<Account> accountList = new List<Account>();        
+        try {
+            accountList = Database.query(query);
+            System.debug('Account Data ==>' +accountList);
+        } catch (Exception ex) {
+            System.debug('Exception occurred: ' + ex.getMessage());
+        }
+        
+        return accountList;
+    }
+}
